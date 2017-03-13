@@ -27,6 +27,8 @@ from deap import tools
 # Allowable characters include all uppercase letters and space
 # You can change these, just be consistent (e.g. in mutate operator)
 VALID_CHARS = string.ascii_uppercase + " "
+num_levenshtein = 0
+memo = {}
 
 # Control whether all Messages are printed as they are evaluated
 VERBOSE = True
@@ -92,7 +94,38 @@ class Message(list):
 # Genetic operators
 # -----------------------------------------------------------------------------
 
-# TODO: Implement levenshtein_distance function (see Day 9 in-class exercises)
+def levenshtein_distance(stringS,stringT):
+    """
+    >>> levenshtein_distance("kitten", len("kitten"), "sitting", len("sitting"))
+    3
+    """
+    # print("evaluating levenshtein of", stringS, "and", stringT, "Iteration", num_levenshtein)
+    global num_levenshtein
+    num_levenshtein +=1
+    cost = 0;
+    # Checks for empty strings
+    if len(stringS) ==0:
+        return len(stringT)
+    if len(stringT) == 0:
+        return len(stringS)
+## If it isn't empty:
+    if stringS[-1] == stringT[-1]:
+        cost =0
+    else:
+        cost = 1
+    key1 = (stringS[:-1], stringT)
+    if not key1 in memo:
+        memo[key1] = levenshtein_distance(*key1)
+    key2 = (stringS, stringT[:-1])
+    if not key2 in memo:
+        memo[key2] = levenshtein_distance(*key2)
+    key3 = (stringS[:-1], stringT[:-1])
+    if not key3 in memo:
+        memo[key3] = levenshtein_distance(*key3)
+    return min(memo[key1] + 1,
+               memo[key2]+1,
+               memo[key3]+cost)
+#  Implement levenshtein_distance function (see Day 9 in-class exercises)
 # HINT: Now would be a great time to implement memoization if you haven't
 
 def evaluate_text(message, goal_text, verbose=VERBOSE):
@@ -101,7 +134,7 @@ def evaluate_text(message, goal_text, verbose=VERBOSE):
     between the Message and the goal_text as a length 1 tuple.
     If verbose is True, print each Message as it is evaluated.
     """
-    distance = levenshtein_distance(message.get_text(), goal_text)
+    distance = levenshtein_distance(goal_text,message.get_text())
     if verbose:
         print("{msg!s}\t[Distance: {dst!s}]".format(msg=message, dst=distance))
     return (distance, )     # Length 1 tuple, required by DEAP
@@ -121,16 +154,44 @@ def mutate_text(message, prob_ins=0.05, prob_del=0.05, prob_sub=0.05):
     """
 
     if random.random() < prob_ins:
-        # TODO: Implement insertion-type mutation
-        pass
-
-    # TODO: Also implement deletion and substitution mutations
-    # HINT: Message objects inherit from list, so they also inherit
-    #       useful list methods
-    # HINT: You probably want to use the VALID_CHARS global variable
+        pos_ins = random.randint(0,len(message))
+        print(pos_ins)
+        # part1 = message[:pos_ins]
+        # ins_message = []
+        # ins_message.extend(part1)
+        # ins_message.extend(random.choice(VALID_CHARS))
+        # ins_message.extend(message[pos_ins:])
+        message.insert(pos_ins,random.choice(VALID_CHARS))
+        # print(message)
+    if random.random()<prob_del:
+        pos_del = random.randint(0,len(message)-1)
+        message.pop(pos_del)
+        # print(pos_del, message)
+    if random.random()<prob_sub:
+        pos_sub = random.randint(0,len(message)-1)
+        message[pos_sub] = random.choice(VALID_CHARS)
+        # print(pos_sub,message)
 
     return (message, )   # Length 1 tuple, required by DEAP
 
+def crossover_two(String1,String2):
+    """
+    Takes 2 strings, makes a crossover of the two of them.
+    Note:  I did what the pseudocode says, but there's an error that 'str' object has no attribute 'fitness.'
+    """
+    max_cross_len = max(len(String1),len(String2))
+    start_pos = random.randint(0,max_cross_len-1)
+    end_pos = random.randint(start_pos,max_cross_len-1)
+    string1_start = "".join(String1[:start_pos])
+    string1_cross = "".join(String1[start_pos:end_pos])
+    string1_end = "".join(String1[end_pos:])
+    string2_start = "".join(String2[:start_pos])
+    string2_cross = "".join(String2[start_pos:end_pos])
+    string2_end = "".join(String2[end_pos:])
+    new_string1 = "".join((string1_start,string2_cross,string1_end))
+    print(new_string1)
+    new_string2 = "".join((string2_start,string1_cross,string2_end))
+    return(new_string1,new_string2)
 
 # -----------------------------------------------------------------------------
 # DEAP Toolbox and Algorithm setup
@@ -149,7 +210,7 @@ def get_toolbox(text):
 
     # Genetic operators
     toolbox.register("evaluate", evaluate_text, goal_text=text)
-    toolbox.register("mate", tools.cxTwoPoint)
+    toolbox.register("mate", tools.cxTwoPoints)
     toolbox.register("mutate", mutate_text)
     toolbox.register("select", tools.selTournament, tournsize=3)
 
@@ -170,7 +231,7 @@ def evolve_string(text):
 
     # Get configured toolbox and create a population of random Messages
     toolbox = get_toolbox(text)
-    pop = toolbox.population(n=300)
+    pop = toolbox.population(n=500)
 
     # Collect statistics as the EA runs
     stats = tools.Statistics(lambda ind: ind.fitness.values)
@@ -197,14 +258,15 @@ def evolve_string(text):
 if __name__ == "__main__":
 
     # Get goal message from command line (optional)
-    import sys
-    if len(sys.argv) == 1:
-        # Default goal of the evolutionary algorithm if not specified.
-        # Pretty much the opposite of http://xkcd.com/534
-        goal = "SKYNET IS NOW ONLINE"
-    else:
-        goal = " ".join(sys.argv[1:])
-
+    # import sys
+    # if len(sys.argv) == 1:
+    #     # Default goal of the evolutionary algorithm if not specified.
+    #     # Pretty much the opposite of http://xkcd.com/534
+    #     goal = "SKYNET IS NOW ONLINE"
+    # else:
+    #     goal = " ".join(sys.argv[1:])
+    # print(goal)
+    goal = "ALL IS NOT LOST"
     # Verify that specified goal contains only known valid characters
     # (otherwise we'll never be able to evolve that string)
     for char in goal:
@@ -212,6 +274,7 @@ if __name__ == "__main__":
             msg = "Given text {goal!r} contains illegal character {char!r}.\n"
             msg += "Valid set: {val!r}\n"
             raise ValueError(msg.format(goal=goal, char=char, val=VALID_CHARS))
-
+    
     # Run evolutionary algorithm
     pop, log = evolve_string(goal)
+    # mutate_text(["A","B","C","D","E"],prob_ins=1,prob_del=1,prob_sub=1)
